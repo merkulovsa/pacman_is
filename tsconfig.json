@@ -1,0 +1,15 @@
+{
+    "compilerOptions": {
+        "module": "system",
+        "noImplicitAny": true,
+        "noEmitOnError": true,
+        "removeComments": true,
+        "allowJs": true,
+        "outFile": "build/compiled.js"
+    },
+    "include": [
+        "node_modules/tween.js/src/Tween.js",
+        "src/"
+    ],
+    "compileOnSave": true
+}
