@@ -1,6 +1,7 @@
 {
     "compilerOptions": {
         "module": "system",
+        "target": "es5",
         "noImplicitAny": true,
         "noEmitOnError": true,
         "removeComments": true,
@@ -8,8 +9,9 @@
         "outFile": "build/compiled.js"
     },
     "include": [
+        "declarations/",
         "node_modules/tween.js/src/Tween.js",
-        "node_modules/pixi.js/dist/pixi.min.js",
+        "node_modules/pixi.js/dist/pixi.js",
         "src/"
     ],
     "compileOnSave": true
