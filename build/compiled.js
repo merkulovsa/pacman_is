@@ -20579,7 +20579,6 @@ var SceneDesigner = (function () {
             sprite.anchor.set(0.0);
             sprite.scale.set(scale);
             sprite.position.set(xPos, yPos);
-            console.log(sprite.name + ", pos: " + sprite.position.x + ", " + sprite.position.y);
             if ((i + 1) % CONST.levelWidth === 0) {
                 xPos = 0;
                 yPos += tileHeight;
