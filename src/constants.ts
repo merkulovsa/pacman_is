@@ -24,4 +24,6 @@ namespace CONST {
     export const tileTex0: PIXI.Texture = PIXI.Texture.from("../assets/textures/1.png")
 
     export const tileTex1: PIXI.Texture = PIXI.Texture.from("../assets/textures/0.png")
+
+    export const playerTex: PIXI.Texture = PIXI.Texture.from("../assets/textures/player.png")
 }

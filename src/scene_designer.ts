@@ -17,12 +17,6 @@ class SceneDesigner {
 
     constructor() {
         ///
-        /// PACMAN SPRITE
-        ///
-        this.PLAYER = new PIXI.Sprite() //TODO: add pacman texture here
-        this.PLAYER.name = "player"
-
-        ///
         /// TILE SPTIRES
         ///
         this.TILES = []
@@ -47,11 +41,20 @@ class SceneDesigner {
         }
 
         ///
+        /// PACMAN SPRITE
+        ///
+        this.PLAYER = new PIXI.Sprite(CONST.playerTex) //TODO: add pacman texture here
+        this.PLAYER.name = "player"
+        this.PLAYER.anchor.set(0.0)
+        this.PLAYER.scale.set(CONST.levelScale)
+        this.PLAYER.position.set(0.0)
+
+        ///
         /// PACMAN SCENE
         ///
         this.PACMAN_SCENE = new PIXI.Container()
-        this.PACMAN_SCENE.addChild(this.PLAYER)
         this.PACMAN_SCENE.addChild(...this.TILES)
+        this.PACMAN_SCENE.addChild(this.PLAYER)
 
         APP.stage.addChild(this.PACMAN_SCENE)
         console.log("[SceneDesigner] SCENE WAS BUILT")

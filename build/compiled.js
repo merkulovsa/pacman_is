@@ -20523,58 +20523,22 @@ var CONST;
     CONST.levelScale = 0.25;
     CONST.tileTex0 = PIXI.Texture.from("../assets/textures/1.png");
     CONST.tileTex1 = PIXI.Texture.from("../assets/textures/0.png");
+    CONST.playerTex = PIXI.Texture.from("../assets/textures/player.png");
 })(CONST || (CONST = {}));
-var GameController = (function () {
-    function GameController() {
-        this._currentState = null;
-        this._previousState = null;
-        this.states = {};
-    }
-    Object.defineProperty(GameController.prototype, "currentState", {
-        get: function () {
-            return this._currentState;
-        },
-        enumerable: true,
-        configurable: true
-    });
-    Object.defineProperty(GameController.prototype, "previousState", {
-        get: function () {
-            return this._previousState;
-        },
-        enumerable: true,
-        configurable: true
-    });
-    GameController.prototype.update = function () {
-        if (!this._currentState) {
-            return;
+class SceneDesigner {
+    static get instance() {
+        if (!this._instance) {
+            this._instance = new SceneDesigner();
         }
-        var nextState = this._currentState.update();
-        if (nextState !== this._currentState) {
-            this._previousState = this._currentState;
-            this._currentState.exit();
-            this._currentState = nextState;
-            this._currentState.enter();
-        }
-    };
-    return GameController;
-}());
-var GameState = (function () {
-    function GameState(gameController) {
-        this.gameController = gameController;
+        return this._instance;
     }
-    return GameState;
-}());
-var SceneDesigner = (function () {
-    function SceneDesigner() {
-        var _a;
-        this.PLAYER = new PIXI.Sprite();
-        this.PLAYER.name = "player";
+    constructor() {
         this.TILES = [];
-        var scale = CONST.levelScale;
-        var tileWidth = CONST.tileTex0.width * scale, tileHeight = CONST.tileTex0.height * scale;
-        var xPos = 0, yPos = 0;
-        for (var i = 0; i < CONST.levelHeight * CONST.levelWidth; ++i) {
-            var sprite = new PIXI.Sprite(CONST.levelMask[i] ? CONST.tileTex1 : CONST.tileTex0);
+        const scale = CONST.levelScale;
+        const tileWidth = CONST.tileTex0.width * scale, tileHeight = CONST.tileTex0.height * scale;
+        let xPos = 0, yPos = 0;
+        for (let i = 0; i < CONST.levelHeight * CONST.levelWidth; ++i) {
+            const sprite = new PIXI.Sprite(CONST.levelMask[i] ? CONST.tileTex1 : CONST.tileTex0);
             sprite.name = "tile-" + i;
             sprite.anchor.set(0.0);
             sprite.scale.set(scale);
@@ -20588,32 +20552,219 @@ var SceneDesigner = (function () {
             }
             this.TILES.push(sprite);
         }
+        this.PLAYER = new PIXI.Sprite(CONST.playerTex);
+        this.PLAYER.name = "player";
+        this.PLAYER.anchor.set(0.0);
+        this.PLAYER.scale.set(CONST.levelScale);
+        this.PLAYER.position.set(0.0);
         this.PACMAN_SCENE = new PIXI.Container();
+        this.PACMAN_SCENE.addChild(...this.TILES);
         this.PACMAN_SCENE.addChild(this.PLAYER);
-        (_a = this.PACMAN_SCENE).addChild.apply(_a, this.TILES);
         APP.stage.addChild(this.PACMAN_SCENE);
         console.log("[SceneDesigner] SCENE WAS BUILT");
     }
-    Object.defineProperty(SceneDesigner, "instance", {
-        get: function () {
-            if (!this._instance) {
-                this._instance = new SceneDesigner();
-            }
-            return this._instance;
-        },
-        enumerable: true,
-        configurable: true
-    });
-    return SceneDesigner;
-}());
-var APP = new PIXI.Application({
+}
+const APP = new PIXI.Application({
     width: window.innerWidth,
     height: window.innerHeight,
     backgroundColor: 0xFFFFFF,
 });
-APP.ticker.add(function () { return onUpdate(); });
+APP.ticker.add(() => onUpdate());
 document.body.appendChild(APP.view);
 function onUpdate() {
     TWEEN.update();
 }
-(function () { return SceneDesigner.instance; })();
+(() => SceneDesigner.instance)();
+class Button {
+    constructor(sprite) {
+        this.sprite = sprite;
+        this.init();
+    }
+    get touchEnabled() {
+        return this.sprite.interactive;
+    }
+    set touchEnabled(value) {
+        this.sprite.interactive = value;
+    }
+    set onPointerTap(callback) {
+        this.sprite.on("pointertap", callback);
+    }
+    set onPointerDown(callback) {
+        this.sprite.on("pointerdown", callback);
+    }
+    set onPointerMove(callback) {
+        this.sprite.on("pointermove", callback);
+    }
+    set onPointerUp(callback) {
+        this.sprite.on("pointerup", callback);
+    }
+    init() {
+        this.sprite.interactive = true;
+        this.sprite.buttonMode = true;
+    }
+}
+class GameController {
+    constructor() {
+        this._currentState = null;
+        this._previousState = null;
+        this.onTilePointerDown = (value, index) => {
+            this.notifyStates("onTilePointerDown", value, index);
+        };
+        this.states = {};
+        this.player = new Player(SceneDesigner.instance.PLAYER);
+        this.tiles = SceneDesigner.instance.TILES.map((value, index) => new Tile(value, this.getNeighbors(index)));
+    }
+    get currentState() {
+        return this._currentState;
+    }
+    get previousState() {
+        return this._previousState;
+    }
+    start() {
+        this.init();
+        this._currentState && this.currentState.enter();
+    }
+    update() {
+        if (!this._currentState) {
+            return;
+        }
+        const nextState = this._currentState.update();
+        if (nextState !== this._currentState) {
+            this._previousState = this._currentState;
+            this._currentState.exit();
+            this._currentState = nextState;
+            this._currentState.enter();
+        }
+    }
+    init() {
+        this.states[IdleState.key] = new IdleState(this);
+        this.states[PlayState.key] = new PlayState(this);
+        for (let i = 0; i < this.tiles.length; ++i) {
+            this.tiles[i].button.onPointerDown = () => this.onTilePointerDown(this.tiles[i], i);
+        }
+        this._currentState = this.states[IdleState.key];
+    }
+    notifyStates(callbackName, ...args) {
+        for (const key in this.states) {
+            if (key) {
+                this.states[key][callbackName] && this.states[key][callbackName](...args);
+            }
+        }
+    }
+    getNeighbors(index) {
+        const neighbors = [];
+        const n = CONST.levelMask.length;
+        let x;
+        x = index - 1;
+        if (x >= 0 && CONST.levelMask[x]) {
+            neighbors.push(x);
+        }
+        x = index + 1;
+        if (x < n && CONST.levelMask[x]) {
+            neighbors.push(x);
+        }
+        x = index - CONST.levelWidth;
+        if (x >= 0 && CONST.levelMask[x]) {
+            neighbors.push(x);
+        }
+        x = index + CONST.levelWidth;
+        if (x < n && CONST.levelMask[x]) {
+            neighbors.push(x);
+        }
+        return neighbors;
+    }
+    getPath(from, to) {
+        const g = this.tiles.map((value) => value.neighbors);
+        const n = CONST.levelMask.length;
+        const s = from;
+        const d = new Array(n).fill(Infinity), p = new Array(n), u = new Array(n);
+        d[s] = 0;
+        for (let i = 0; i < n; ++i) {
+            let v = -1;
+            for (let j = 0; j < n; ++j) {
+                if (!u[j] && (v == -1 || d[j] < d[v])) {
+                    v = j;
+                }
+            }
+            if (d[v] == Infinity) {
+                break;
+            }
+            u[v] = true;
+            for (let j = 0; j < g[v].length; ++j) {
+                let next = g[v][j];
+                if (d[v] + 1 < d[next]) {
+                    d[next] = d[v] + 1;
+                    p[next] = v;
+                }
+            }
+        }
+        const path = [];
+        for (let v = to; v !== s; v = p[v]) {
+            path.push(v);
+        }
+        path.push(s);
+        return path.reverse();
+    }
+}
+class GameState {
+    constructor(game) {
+        this.game = game;
+    }
+}
+GameState.key = "GameState";
+class Player {
+    constructor(playerContainer) {
+        this.container = playerContainer;
+        this.tileIndex = 0;
+    }
+    get position() {
+        return this.container.position;
+    }
+}
+class Tile {
+    constructor(tileSprite, neighbors) {
+        this.occupied = false;
+        this.container = tileSprite;
+        this.button = new Button(tileSprite);
+        this.neighbors = neighbors || [];
+    }
+    get position() {
+        return this.container.position;
+    }
+    get isOccupied() {
+        return this.occupied;
+    }
+}
+class IdleState extends GameState {
+    constructor(game) {
+        super(game);
+        this.onPlayState = false;
+        this.onTilePointerDown = (value, index) => {
+        };
+    }
+    enter() {
+        this.onPlayState = false;
+    }
+    update() {
+        if (this.onPlayState) {
+            return this.game.states[PlayState.key];
+        }
+        return this;
+    }
+    exit() {
+    }
+}
+IdleState.key = "IdleState";
+class PlayState extends GameState {
+    constructor(game) {
+        super(game);
+    }
+    enter() {
+    }
+    update() {
+        return this;
+    }
+    exit() {
+    }
+}
+PlayState.key = "PlayState";
