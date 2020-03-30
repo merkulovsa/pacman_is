@@ -7,6 +7,10 @@ abstract class GameState {
         this.game = game
     }
 
+    get isActiveState(): boolean {
+        return this === this.game.currentState
+    }
+
     abstract enter(): void
 
     abstract update(): GameState

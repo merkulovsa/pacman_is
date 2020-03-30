@@ -1,49 +1,62 @@
-var TWEEN = TWEEN || (function () {
-    var _tweens = [];
-    return {
-        getAll: function () {
-            return _tweens;
-        },
-        removeAll: function () {
-            _tweens = [];
-        },
-        add: function (tween) {
-            _tweens.push(tween);
-        },
-        remove: function (tween) {
-            var i = _tweens.indexOf(tween);
-            if (i !== -1) {
-                _tweens.splice(i, 1);
-            }
-        },
-        update: function (time, preserve) {
-            if (_tweens.length === 0) {
-                return false;
-            }
-            var i = 0;
-            time = time !== undefined ? time : TWEEN.now();
-            while (i < _tweens.length) {
-                if (_tweens[i].update(time) || preserve) {
-                    i++;
-                }
-                else {
-                    _tweens.splice(i, 1);
-                }
-            }
-            return true;
+var _Group = function () {
+    this._tweens = {};
+    this._tweensAddedDuringUpdate = {};
+};
+_Group.prototype = {
+    getAll: function () {
+        return Object.keys(this._tweens).map(function (tweenId) {
+            return this._tweens[tweenId];
+        }.bind(this));
+    },
+    removeAll: function () {
+        this._tweens = {};
+    },
+    add: function (tween) {
+        this._tweens[tween.getId()] = tween;
+        this._tweensAddedDuringUpdate[tween.getId()] = tween;
+    },
+    remove: function (tween) {
+        delete this._tweens[tween.getId()];
+        delete this._tweensAddedDuringUpdate[tween.getId()];
+    },
+    update: function (time, preserve) {
+        var tweenIds = Object.keys(this._tweens);
+        if (tweenIds.length === 0) {
+            return false;
         }
-    };
-})();
-if (typeof (window) === 'undefined' && typeof (process) !== 'undefined') {
+        time = time !== undefined ? time : TWEEN.now();
+        while (tweenIds.length > 0) {
+            this._tweensAddedDuringUpdate = {};
+            for (var i = 0; i < tweenIds.length; i++) {
+                var tween = this._tweens[tweenIds[i]];
+                if (tween && tween.update(time) === false) {
+                    tween._isPlaying = false;
+                    if (!preserve) {
+                        delete this._tweens[tweenIds[i]];
+                    }
+                }
+            }
+            tweenIds = Object.keys(this._tweensAddedDuringUpdate);
+        }
+        return true;
+    }
+};
+var TWEEN = new _Group();
+TWEEN.Group = _Group;
+TWEEN._nextId = 0;
+TWEEN.nextId = function () {
+    return TWEEN._nextId++;
+};
+if (typeof (self) === 'undefined' && typeof (process) !== 'undefined' && process.hrtime) {
     TWEEN.now = function () {
         var time = process.hrtime();
         return time[0] * 1000 + time[1] / 1000000;
     };
 }
-else if (typeof (window) !== 'undefined' &&
-    window.performance !== undefined &&
-    window.performance.now !== undefined) {
-    TWEEN.now = window.performance.now.bind(window.performance);
+else if (typeof (self) !== 'undefined' &&
+    self.performance !== undefined &&
+    self.performance.now !== undefined) {
+    TWEEN.now = self.performance.now.bind(self.performance);
 }
 else if (Date.now !== undefined) {
     TWEEN.now = Date.now;
@@ -53,147 +66,199 @@ else {
         return new Date().getTime();
     };
 }
-TWEEN.Tween = function (object) {
-    var _object = object;
-    var _valuesStart = {};
-    var _valuesEnd = {};
-    var _valuesStartRepeat = {};
-    var _duration = 1000;
-    var _repeat = 0;
-    var _repeatDelayTime;
-    var _yoyo = false;
-    var _isPlaying = false;
-    var _reversed = false;
-    var _delayTime = 0;
-    var _startTime = null;
-    var _easingFunction = TWEEN.Easing.Linear.None;
-    var _interpolationFunction = TWEEN.Interpolation.Linear;
-    var _chainedTweens = [];
-    var _onStartCallback = null;
-    var _onStartCallbackFired = false;
-    var _onUpdateCallback = null;
-    var _onCompleteCallback = null;
-    var _onStopCallback = null;
-    this.to = function (properties, duration) {
-        _valuesEnd = properties;
+TWEEN.Tween = function (object, group) {
+    this._isPaused = false;
+    this._pauseStart = null;
+    this._object = object;
+    this._valuesStart = {};
+    this._valuesEnd = {};
+    this._valuesStartRepeat = {};
+    this._duration = 1000;
+    this._repeat = 0;
+    this._repeatDelayTime = undefined;
+    this._yoyo = false;
+    this._isPlaying = false;
+    this._reversed = false;
+    this._delayTime = 0;
+    this._startTime = null;
+    this._easingFunction = TWEEN.Easing.Linear.None;
+    this._interpolationFunction = TWEEN.Interpolation.Linear;
+    this._chainedTweens = [];
+    this._onStartCallback = null;
+    this._onStartCallbackFired = false;
+    this._onUpdateCallback = null;
+    this._onRepeatCallback = null;
+    this._onCompleteCallback = null;
+    this._onStopCallback = null;
+    this._group = group || TWEEN;
+    this._id = TWEEN.nextId();
+};
+TWEEN.Tween.prototype = {
+    getId: function () {
+        return this._id;
+    },
+    isPlaying: function () {
+        return this._isPlaying;
+    },
+    isPaused: function () {
+        return this._isPaused;
+    },
+    to: function (properties, duration) {
+        this._valuesEnd = Object.create(properties);
         if (duration !== undefined) {
-            _duration = duration;
+            this._duration = duration;
         }
         return this;
-    };
-    this.start = function (time) {
-        TWEEN.add(this);
-        _isPlaying = true;
-        _onStartCallbackFired = false;
-        _startTime = time !== undefined ? time : TWEEN.now();
-        _startTime += _delayTime;
-        for (var property in _valuesEnd) {
-            if (_valuesEnd[property] instanceof Array) {
-                if (_valuesEnd[property].length === 0) {
+    },
+    duration: function duration(d) {
+        this._duration = d;
+        return this;
+    },
+    start: function (time) {
+        this._group.add(this);
+        this._isPlaying = true;
+        this._isPaused = false;
+        this._onStartCallbackFired = false;
+        this._startTime = time !== undefined ? typeof time === 'string' ? TWEEN.now() + parseFloat(time) : time : TWEEN.now();
+        this._startTime += this._delayTime;
+        for (var property in this._valuesEnd) {
+            if (this._valuesEnd[property] instanceof Array) {
+                if (this._valuesEnd[property].length === 0) {
                     continue;
                 }
-                _valuesEnd[property] = [_object[property]].concat(_valuesEnd[property]);
+                this._valuesEnd[property] = [this._object[property]].concat(this._valuesEnd[property]);
             }
-            if (_object[property] === undefined) {
+            if (this._object[property] === undefined) {
                 continue;
             }
-            _valuesStart[property] = _object[property];
-            if ((_valuesStart[property] instanceof Array) === false) {
-                _valuesStart[property] *= 1.0;
+            if (typeof (this._valuesStart[property]) === 'undefined') {
+                this._valuesStart[property] = this._object[property];
             }
-            _valuesStartRepeat[property] = _valuesStart[property] || 0;
+            if ((this._valuesStart[property] instanceof Array) === false) {
+                this._valuesStart[property] *= 1.0;
+            }
+            this._valuesStartRepeat[property] = this._valuesStart[property] || 0;
         }
         return this;
-    };
-    this.stop = function () {
-        if (!_isPlaying) {
+    },
+    stop: function () {
+        if (!this._isPlaying) {
             return this;
         }
-        TWEEN.remove(this);
-        _isPlaying = false;
-        if (_onStopCallback !== null) {
-            _onStopCallback.call(_object, _object);
+        this._group.remove(this);
+        this._isPlaying = false;
+        this._isPaused = false;
+        if (this._onStopCallback !== null) {
+            this._onStopCallback(this._object);
         }
         this.stopChainedTweens();
         return this;
-    };
-    this.end = function () {
-        this.update(_startTime + _duration);
+    },
+    end: function () {
+        this.update(Infinity);
         return this;
-    };
-    this.stopChainedTweens = function () {
-        for (var i = 0, numChainedTweens = _chainedTweens.length; i < numChainedTweens; i++) {
-            _chainedTweens[i].stop();
+    },
+    pause: function (time) {
+        if (this._isPaused || !this._isPlaying) {
+            return this;
         }
-    };
-    this.delay = function (amount) {
-        _delayTime = amount;
+        this._isPaused = true;
+        this._pauseStart = time === undefined ? TWEEN.now() : time;
+        this._group.remove(this);
         return this;
-    };
-    this.repeat = function (times) {
-        _repeat = times;
+    },
+    resume: function (time) {
+        if (!this._isPaused || !this._isPlaying) {
+            return this;
+        }
+        this._isPaused = false;
+        this._startTime += (time === undefined ? TWEEN.now() : time)
+            - this._pauseStart;
+        this._pauseStart = 0;
+        this._group.add(this);
         return this;
-    };
-    this.repeatDelay = function (amount) {
-        _repeatDelayTime = amount;
+    },
+    stopChainedTweens: function () {
+        for (var i = 0, numChainedTweens = this._chainedTweens.length; i < numChainedTweens; i++) {
+            this._chainedTweens[i].stop();
+        }
+    },
+    group: function (group) {
+        this._group = group;
         return this;
-    };
-    this.yoyo = function (yoyo) {
-        _yoyo = yoyo;
+    },
+    delay: function (amount) {
+        this._delayTime = amount;
         return this;
-    };
-    this.easing = function (easing) {
-        _easingFunction = easing;
+    },
+    repeat: function (times) {
+        this._repeat = times;
         return this;
-    };
-    this.interpolation = function (interpolation) {
-        _interpolationFunction = interpolation;
+    },
+    repeatDelay: function (amount) {
+        this._repeatDelayTime = amount;
         return this;
-    };
-    this.chain = function () {
-        _chainedTweens = arguments;
+    },
+    yoyo: function (yoyo) {
+        this._yoyo = yoyo;
         return this;
-    };
-    this.onStart = function (callback) {
-        _onStartCallback = callback;
+    },
+    easing: function (easingFunction) {
+        this._easingFunction = easingFunction;
         return this;
-    };
-    this.onUpdate = function (callback) {
-        _onUpdateCallback = callback;
+    },
+    interpolation: function (interpolationFunction) {
+        this._interpolationFunction = interpolationFunction;
         return this;
-    };
-    this.onComplete = function (callback) {
-        _onCompleteCallback = callback;
+    },
+    chain: function () {
+        this._chainedTweens = arguments;
         return this;
-    };
-    this.onStop = function (callback) {
-        _onStopCallback = callback;
+    },
+    onStart: function (callback) {
+        this._onStartCallback = callback;
         return this;
-    };
-    this.update = function (time) {
+    },
+    onUpdate: function (callback) {
+        this._onUpdateCallback = callback;
+        return this;
+    },
+    onRepeat: function onRepeat(callback) {
+        this._onRepeatCallback = callback;
+        return this;
+    },
+    onComplete: function (callback) {
+        this._onCompleteCallback = callback;
+        return this;
+    },
+    onStop: function (callback) {
+        this._onStopCallback = callback;
+        return this;
+    },
+    update: function (time) {
         var property;
         var elapsed;
         var value;
-        if (time < _startTime) {
+        if (time < this._startTime) {
             return true;
         }
-        if (_onStartCallbackFired === false) {
-            if (_onStartCallback !== null) {
-                _onStartCallback.call(_object, _object);
+        if (this._onStartCallbackFired === false) {
+            if (this._onStartCallback !== null) {
+                this._onStartCallback(this._object);
             }
-            _onStartCallbackFired = true;
+            this._onStartCallbackFired = true;
         }
-        elapsed = (time - _startTime) / _duration;
-        elapsed = elapsed > 1 ? 1 : elapsed;
-        value = _easingFunction(elapsed);
-        for (property in _valuesEnd) {
-            if (_valuesStart[property] === undefined) {
+        elapsed = (time - this._startTime) / this._duration;
+        elapsed = (this._duration === 0 || elapsed > 1) ? 1 : elapsed;
+        value = this._easingFunction(elapsed);
+        for (property in this._valuesEnd) {
+            if (this._valuesStart[property] === undefined) {
                 continue;
             }
-            var start = _valuesStart[property] || 0;
-            var end = _valuesEnd[property];
+            var start = this._valuesStart[property] || 0;
+            var end = this._valuesEnd[property];
             if (end instanceof Array) {
-                _object[property] = _interpolationFunction(end, value);
+                this._object[property] = this._interpolationFunction(end, value);
             }
             else {
                 if (typeof (end) === 'string') {
@@ -205,52 +270,55 @@ TWEEN.Tween = function (object) {
                     }
                 }
                 if (typeof (end) === 'number') {
-                    _object[property] = start + (end - start) * value;
+                    this._object[property] = start + (end - start) * value;
                 }
             }
         }
-        if (_onUpdateCallback !== null) {
-            _onUpdateCallback.call(_object, value);
+        if (this._onUpdateCallback !== null) {
+            this._onUpdateCallback(this._object, elapsed);
         }
         if (elapsed === 1) {
-            if (_repeat > 0) {
-                if (isFinite(_repeat)) {
-                    _repeat--;
+            if (this._repeat > 0) {
+                if (isFinite(this._repeat)) {
+                    this._repeat--;
                 }
-                for (property in _valuesStartRepeat) {
-                    if (typeof (_valuesEnd[property]) === 'string') {
-                        _valuesStartRepeat[property] = _valuesStartRepeat[property] + parseFloat(_valuesEnd[property]);
+                for (property in this._valuesStartRepeat) {
+                    if (typeof (this._valuesEnd[property]) === 'string') {
+                        this._valuesStartRepeat[property] = this._valuesStartRepeat[property] + parseFloat(this._valuesEnd[property]);
                     }
-                    if (_yoyo) {
-                        var tmp = _valuesStartRepeat[property];
-                        _valuesStartRepeat[property] = _valuesEnd[property];
-                        _valuesEnd[property] = tmp;
+                    if (this._yoyo) {
+                        var tmp = this._valuesStartRepeat[property];
+                        this._valuesStartRepeat[property] = this._valuesEnd[property];
+                        this._valuesEnd[property] = tmp;
                     }
-                    _valuesStart[property] = _valuesStartRepeat[property];
+                    this._valuesStart[property] = this._valuesStartRepeat[property];
                 }
-                if (_yoyo) {
-                    _reversed = !_reversed;
+                if (this._yoyo) {
+                    this._reversed = !this._reversed;
                 }
-                if (_repeatDelayTime !== undefined) {
-                    _startTime = time + _repeatDelayTime;
+                if (this._repeatDelayTime !== undefined) {
+                    this._startTime = time + this._repeatDelayTime;
                 }
                 else {
-                    _startTime = time + _delayTime;
+                    this._startTime = time + this._delayTime;
+                }
+                if (this._onRepeatCallback !== null) {
+                    this._onRepeatCallback(this._object);
                 }
                 return true;
             }
             else {
-                if (_onCompleteCallback !== null) {
-                    _onCompleteCallback.call(_object, _object);
+                if (this._onCompleteCallback !== null) {
+                    this._onCompleteCallback(this._object);
                 }
-                for (var i = 0, numChainedTweens = _chainedTweens.length; i < numChainedTweens; i++) {
-                    _chainedTweens[i].start(_startTime + _duration);
+                for (var i = 0, numChainedTweens = this._chainedTweens.length; i < numChainedTweens; i++) {
+                    this._chainedTweens[i].start(this._startTime + this._duration);
                 }
                 return false;
             }
         }
         return true;
-    };
+    }
 };
 TWEEN.Easing = {
     Linear: {
@@ -20504,7 +20572,7 @@ PIXI.useDeprecated();
 var CONST;
 (function (CONST) {
     CONST.levelWidth = 28;
-    CONST.levelHeight = 30;
+    CONST.levelHeight = 27;
     CONST.levelMask = [
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0,
@@ -20517,10 +20585,25 @@ var CONST;
         0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0,
         0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
+        0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0,
+        0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0,
+        0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0,
+        0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0,
+        0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0,
+        0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0,
+        0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0,
+        0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     ];
-    CONST.levelScale = 0.25;
+    CONST.levelScale = 0.12;
+    CONST.stepDuration = 200;
     CONST.tileTex0 = PIXI.Texture.from("../assets/textures/1.png");
     CONST.tileTex1 = PIXI.Texture.from("../assets/textures/0.png");
     CONST.playerTex = PIXI.Texture.from("../assets/textures/player.png");
@@ -20564,17 +20647,15 @@ class SceneDesigner {
         console.log("[SceneDesigner] SCENE WAS BUILT");
     }
 }
-const APP = new PIXI.Application({
-    width: window.innerWidth,
-    height: window.innerHeight,
-    backgroundColor: 0xFFFFFF,
-});
-APP.ticker.add(() => onUpdate());
-document.body.appendChild(APP.view);
-function onUpdate() {
-    TWEEN.update();
+class Player {
+    constructor(playerContainer) {
+        this.container = playerContainer;
+        this.index = 0;
+    }
+    get position() {
+        return this.container.position;
+    }
 }
-(() => SceneDesigner.instance)();
 class Button {
     constructor(sprite) {
         this.sprite = sprite;
@@ -20603,16 +20684,94 @@ class Button {
         this.sprite.buttonMode = true;
     }
 }
+class Tile {
+    constructor(tileSprite, neighbors) {
+        this.container = tileSprite;
+        this.button = new Button(tileSprite);
+        this.neighbors = neighbors || [];
+    }
+    get position() {
+        return this.container.position;
+    }
+}
+class GameState {
+    constructor(game) {
+        this.game = game;
+    }
+    get isActiveState() {
+        return this === this.game.currentState;
+    }
+}
+GameState.key = "GameState";
+class IdleState extends GameState {
+    constructor(game) {
+        super(game);
+        this.onPlayState = false;
+        this.onTilePointerDown = (value, index) => {
+            if (!this.isActiveState || !CONST.levelMask[index] || !CONST.levelMask[this.game.player.index]) {
+                return;
+            }
+            const path = this.game.getPath(this.game.player.index, index);
+            const toX = [];
+            const toY = [];
+            for (let i = 0; i < path.length; ++i) {
+                const pos = this.game.tiles[path[i]].position;
+                toX.push(pos.x);
+                toY.push(pos.y);
+            }
+            const from = { x: this.game.player.position.x, y: this.game.player.position.y };
+            const to = { x: toX, y: toY };
+            this.game.moveTween =
+                new TWEEN.Tween(from)
+                    .to(to, path.length * CONST.stepDuration)
+                    .onUpdate((value) => this.game.player.position.set(value.x, value.y))
+                    .easing(TWEEN.Easing.Linear.None)
+                    .interpolation(TWEEN.Interpolation.Linear);
+            this.game.player.index = index;
+            this.onPlayState = true;
+        };
+    }
+    enter() {
+        this.onPlayState = false;
+    }
+    update() {
+        if (this.onPlayState) {
+            return this.game.states[PlayState.key];
+        }
+        return this;
+    }
+    exit() {
+    }
+}
+IdleState.key = "IdleState";
+class PlayState extends GameState {
+    constructor(game) {
+        super(game);
+    }
+    enter() {
+        this.game.moveTween.start();
+    }
+    update() {
+        if (this.game.moveTween.isPlaying()) {
+            return this;
+        }
+        return this.game.states[IdleState.key];
+    }
+    exit() {
+    }
+}
+PlayState.key = "PlayState";
 class GameController {
     constructor() {
+        this.moveTween = null;
         this._currentState = null;
         this._previousState = null;
         this.onTilePointerDown = (value, index) => {
             this.notifyStates("onTilePointerDown", value, index);
         };
         this.states = {};
-        this.player = new Player(SceneDesigner.instance.PLAYER);
-        this.tiles = SceneDesigner.instance.TILES.map((value, index) => new Tile(value, this.getNeighbors(index)));
+        this.player = new Player(DESIGNER.PLAYER);
+        this.tiles = DESIGNER.TILES.map((value, index) => new Tile(value, this.getNeighbors(index)));
     }
     get currentState() {
         return this._currentState;
@@ -20634,21 +20793,6 @@ class GameController {
             this._currentState.exit();
             this._currentState = nextState;
             this._currentState.enter();
-        }
-    }
-    init() {
-        this.states[IdleState.key] = new IdleState(this);
-        this.states[PlayState.key] = new PlayState(this);
-        for (let i = 0; i < this.tiles.length; ++i) {
-            this.tiles[i].button.onPointerDown = () => this.onTilePointerDown(this.tiles[i], i);
-        }
-        this._currentState = this.states[IdleState.key];
-    }
-    notifyStates(callbackName, ...args) {
-        for (const key in this.states) {
-            if (key) {
-                this.states[key][callbackName] && this.states[key][callbackName](...args);
-            }
         }
     }
     getNeighbors(index) {
@@ -20705,66 +20849,36 @@ class GameController {
         path.push(s);
         return path.reverse();
     }
-}
-class GameState {
-    constructor(game) {
-        this.game = game;
-    }
-}
-GameState.key = "GameState";
-class Player {
-    constructor(playerContainer) {
-        this.container = playerContainer;
-        this.tileIndex = 0;
-    }
-    get position() {
-        return this.container.position;
-    }
-}
-class Tile {
-    constructor(tileSprite, neighbors) {
-        this.occupied = false;
-        this.container = tileSprite;
-        this.button = new Button(tileSprite);
-        this.neighbors = neighbors || [];
-    }
-    get position() {
-        return this.container.position;
-    }
-    get isOccupied() {
-        return this.occupied;
-    }
-}
-class IdleState extends GameState {
-    constructor(game) {
-        super(game);
-        this.onPlayState = false;
-        this.onTilePointerDown = (value, index) => {
-        };
-    }
-    enter() {
-        this.onPlayState = false;
-    }
-    update() {
-        if (this.onPlayState) {
-            return this.game.states[PlayState.key];
+    init() {
+        this.states[IdleState.key] = new IdleState(this);
+        this.states[PlayState.key] = new PlayState(this);
+        for (let i = 0; i < this.tiles.length; ++i) {
+            this.tiles[i].button.onPointerDown = () => this.onTilePointerDown(this.tiles[i], i);
         }
-        return this;
+        const startTile = this.tiles.find((value, index) => !!CONST.levelMask[index]);
+        this.player.position.set(startTile.position.x, startTile.position.y);
+        this.player.index = this.tiles.indexOf(startTile);
+        this._currentState = this.states[IdleState.key];
     }
-    exit() {
-    }
-}
-IdleState.key = "IdleState";
-class PlayState extends GameState {
-    constructor(game) {
-        super(game);
-    }
-    enter() {
-    }
-    update() {
-        return this;
-    }
-    exit() {
+    notifyStates(callbackName, ...args) {
+        for (const key in this.states) {
+            if (key) {
+                this.states[key][callbackName] && this.states[key][callbackName](...args);
+            }
+        }
     }
 }
-PlayState.key = "PlayState";
+const APP = new PIXI.Application({
+    width: window.innerWidth,
+    height: window.innerHeight,
+    backgroundColor: 0xFFFFFF,
+});
+APP.ticker.add(() => onUpdate());
+document.body.appendChild(APP.view);
+const DESIGNER = SceneDesigner.instance;
+const GAME = new GameController();
+function onUpdate() {
+    TWEEN.update();
+    GAME.update();
+}
+GAME.start();

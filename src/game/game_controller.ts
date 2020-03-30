@@ -1,15 +1,22 @@
+///<reference path="./player.ts"/>
+///<reference path="./tile.ts"/>
+///<reference path="./states/idle_state.ts"/>
+///<reference path="./states/play_state.ts"/>
+
 class GameController {
     readonly states: {[key: string]: GameState}
     readonly player: Player
     readonly tiles: Tile[]
+
+    moveTween: TWEEN.Tween = null
 
     private _currentState: GameState = null
     private _previousState: GameState = null
 
     constructor() {
         this.states = {}
-        this.player = new Player(SceneDesigner.instance.PLAYER)
-        this.tiles = SceneDesigner.instance.TILES.map((value, index) => new Tile(value, this.getNeighbors(index)))
+        this.player = new Player(DESIGNER.PLAYER)
+        this.tiles = DESIGNER.TILES.map((value, index) => new Tile(value, this.getNeighbors(index)))
     }
 
     get currentState(): GameState {
@@ -40,26 +47,7 @@ class GameController {
         }
     }
 
-    private init(): void {
-        this.states[IdleState.key] = new IdleState(this)
-        this.states[PlayState.key] = new PlayState(this)
-
-        for (let i = 0; i < this.tiles.length; ++i) {
-            this.tiles[i].button.onPointerDown = () => this.onTilePointerDown(this.tiles[i], i)
-        }
-
-        this._currentState = this.states[IdleState.key]
-    }
-
-    private notifyStates(callbackName: string, ...args: any[]): void {
-        for (const key in this.states) {
-            if (key) {
-                this.states[key][callbackName] && this.states[key][callbackName](...args)
-            }
-        }
-    }
-
-    private getNeighbors(index: number): number[] {
+    getNeighbors(index: number): number[] {
         const neighbors = []
         const n = CONST.levelMask.length
         let x
@@ -92,7 +80,7 @@ class GameController {
     }
 
     // Diijkstra
-    private getPath(from: number, to: number): number[] {
+    getPath(from: number, to: number): number[] {
         const g = this.tiles.map((value) => value.neighbors)
         const n = CONST.levelMask.length
         const s = from
@@ -127,6 +115,30 @@ class GameController {
         path.push(s)
         
         return path.reverse()
+    }
+    
+    private init(): void {
+        this.states[IdleState.key] = new IdleState(this)
+        this.states[PlayState.key] = new PlayState(this)
+
+        for (let i = 0; i < this.tiles.length; ++i) {
+            this.tiles[i].button.onPointerDown = () => this.onTilePointerDown(this.tiles[i], i)
+        }
+        
+        
+        const startTile = this.tiles.find((value, index) => !!CONST.levelMask[index])
+        this.player.position.set(startTile.position.x, startTile.position.y)
+        this.player.index = this.tiles.indexOf(startTile)
+
+        this._currentState = this.states[IdleState.key]
+    }
+
+    private notifyStates(callbackName: string, ...args: any[]): void {
+        for (const key in this.states) {
+            if (key) {
+                this.states[key][callbackName] && this.states[key][callbackName](...args)
+            }
+        }
     }
 
     private readonly onTilePointerDown = (value: Tile, index: number) => {
