@@ -9,10 +9,10 @@
         "outFile": "build/compiled.js"
     },
     "include": [
-        "declarations/",
-        "node_modules/tween.js/src/Tween.js",
-        "node_modules/pixi.js/dist/pixi.js",
-        "src/"
+        "../declarations/",
+        "../node_modules/tween.js/src/Tween.js",
+        "../node_modules/pixi.js/dist/pixi.js",
+        "./src"
     ],
     "compileOnSave": true
 }
