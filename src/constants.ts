@@ -35,6 +35,14 @@ namespace CONST {
 
     export const levelScale: number = 0.12
 
+    // export const pendingTileAlpha: number = 0.8
+
+    export const checkedTileAlpha: number = 0.5
+
+    export const addedToPathTileAlpha: number = 1.0
+
+    export const inactiveTileAlpha: number = 0.8
+
     export const stepDuration: number = 200 // milliseconds 
 
     export const tileTex0: PIXI.Texture = PIXI.Texture.from("../assets/textures/1.png")

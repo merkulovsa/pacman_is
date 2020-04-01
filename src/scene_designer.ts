@@ -13,6 +13,7 @@ class SceneDesigner {
     readonly PACMAN_SCENE: PIXI.Container
 
     readonly PLAYER: PIXI.Sprite
+    readonly SOLVER: PIXI.Text
     readonly TILES: PIXI.Sprite[]
 
     constructor() {
@@ -50,11 +51,20 @@ class SceneDesigner {
         this.PLAYER.position.set(0.0)
 
         ///
+        /// SOLVER
+        ///
+        this.SOLVER = new PIXI.Text("", new PIXI.TextStyle({fill: "#FFFFFF"}))
+        this.SOLVER.name = "solver"
+        this.SOLVER.anchor.set(0.0)
+        this.SOLVER.position.set(0.0)
+
+        ///
         /// PACMAN SCENE
         ///
         this.PACMAN_SCENE = new PIXI.Container()
         this.PACMAN_SCENE.addChild(...this.TILES)
         this.PACMAN_SCENE.addChild(this.PLAYER)
+        this.PACMAN_SCENE.addChild(this.SOLVER)
 
         APP.stage.addChild(this.PACMAN_SCENE)
         console.log("[SceneDesigner] SCENE WAS BUILT")

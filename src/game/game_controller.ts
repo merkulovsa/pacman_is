@@ -1,22 +1,37 @@
 ///<reference path="./player.ts"/>
 ///<reference path="./tile.ts"/>
 ///<reference path="./states/idle_state.ts"/>
-///<reference path="./states/play_state.ts"/>
+///<reference path="./states/move_state.ts"/>
+///<reference path="../path_solver/solvers/dijkstra_solver.ts"/>
+///<reference path="../path_solver/solvers/greedy_solver.ts"/>
+///<reference path="../path_solver/solvers/astar_solver.ts"/>
 
 class GameController {
     readonly states: {[key: string]: GameState}
     readonly player: Player
     readonly tiles: Tile[]
+    readonly solverButton: Button
 
     moveTween: TWEEN.Tween = null
 
+    private readonly graph: number[][]
+    private readonly solvers: PathSolver[]
+
+    private solverIndex: number = 0
     private _currentState: GameState = null
     private _previousState: GameState = null
 
     constructor() {
         this.states = {}
         this.player = new Player(DESIGNER.PLAYER)
-        this.tiles = DESIGNER.TILES.map((value, index) => new Tile(value, this.getNeighbors(index)))
+        this.tiles = DESIGNER.TILES.map((value) => new Tile(value))
+        this.solverButton = new Button(DESIGNER.SOLVER)
+        this.graph = Object.keys(CONST.levelMask).map(Number).map(value => getNeighbors(value))
+        this.solvers = [
+            new DijkstraSolver(this.graph),
+            new GreedySolver(this.graph),
+            new AstarSolver(this.graph),
+        ]
     }
 
     get currentState(): GameState {
@@ -25,6 +40,10 @@ class GameController {
 
     get previousState(): GameState {
         return this._previousState
+    }
+    
+    get currentSolver(): PathSolver {
+        return this.solvers[this.solverIndex]
     }
 
     start(): void {
@@ -47,79 +66,14 @@ class GameController {
         }
     }
 
-    getNeighbors(index: number): number[] {
-        const neighbors = []
-        const n = CONST.levelMask.length
-        let x
-
-        // left
-        x = index - 1
-        if (x >= 0 && CONST.levelMask[x]) {
-            neighbors.push(x)
-        }
-
-        // right
-        x = index + 1
-        if (x < n && CONST.levelMask[x]) {
-            neighbors.push(x)
-        }
-
-        // up
-        x = index - CONST.levelWidth
-        if (x >= 0 && CONST.levelMask[x]) {
-            neighbors.push(x)
-        }
-
-        // down
-        x = index + CONST.levelWidth
-        if (x < n && CONST.levelMask[x]) {
-            neighbors.push(x)
-        }
-
-        return neighbors
-    }
-
-    // Diijkstra
-    getPath(from: number, to: number): number[] {
-        const g = this.tiles.map((value) => value.neighbors)
-        const n = CONST.levelMask.length
-        const s = from
-	    const d = new Array(n).fill(Infinity), p = new Array(n), u = new Array(n)
-	    d[s] = 0
-	    for (let i = 0; i < n; ++i) {
-	    	let v = -1
-            for (let j = 0; j < n; ++j) {
-                if (!u[j] && (v == -1 || d[j] < d[v])) {
-                    v = j
-                }
-            }
-	    		
-            if (d[v] == Infinity) {
-	    		break
-            }
-	    	u[v] = true
-        
-	    	for (let j = 0; j < g[v].length; ++j) {
-	    		let next = g[v][j]
-	    		if (d[v] + 1 < d[next]) {
-	    			d[next] = d[v] + 1
-	    			p[next] = v
-	    		}
-	    	}
-        }
-
-        const path: number[] = []
-        for (let v = to; v !== s; v = p[v]) {
-	        path.push(v)
-        }
-        path.push(s)
-        
-        return path.reverse()
+    nextSolver(): void {
+        this.solverIndex = (this.solverIndex + 1) % this.solvers.length
+        DESIGNER.SOLVER.text = this.currentSolver.name
     }
     
     private init(): void {
         this.states[IdleState.key] = new IdleState(this)
-        this.states[PlayState.key] = new PlayState(this)
+        this.states[MoveState.key] = new MoveState(this)
 
         for (let i = 0; i < this.tiles.length; ++i) {
             this.tiles[i].button.onPointerDown = () => this.onTilePointerDown(this.tiles[i], i)
@@ -129,6 +83,15 @@ class GameController {
         const startTile = this.tiles.find((value, index) => !!CONST.levelMask[index])
         this.player.position.set(startTile.position.x, startTile.position.y)
         this.player.index = this.tiles.indexOf(startTile)
+
+        for (const solver of this.solvers) {
+            solver.onVertexPending = this.onVertexPending
+            solver.onVertexChecked = this.onVertexChecked
+            solver.onVertexAddedToPath = this.onVertexAddedToPath
+        }
+        
+        DESIGNER.SOLVER.text = this.currentSolver.name
+        this.solverButton.onPointerDown = this.onSolverPointerDown
 
         this._currentState = this.states[IdleState.key]
     }
@@ -141,7 +104,23 @@ class GameController {
         }
     }
 
+    private readonly onVertexPending = (index: number) => {
+        // this.tiles[index].alpha = CONST.pendingTileAlpha
+    }
+
+    private readonly onVertexChecked = (index: number) => {
+        this.tiles[index].alpha = CONST.checkedTileAlpha
+    }
+
+    private readonly onVertexAddedToPath = (index: number) => {
+        this.tiles[index].alpha = CONST.addedToPathTileAlpha
+    }
+
     private readonly onTilePointerDown = (value: Tile, index: number) => {
         this.notifyStates("onTilePointerDown", value, index)
+    }
+
+    private readonly onSolverPointerDown = () => {
+        this.notifyStates("onSolverPointerDown")
     }
 }

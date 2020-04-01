@@ -16,7 +16,7 @@ class IdleState extends GameState {
 
     update(): GameState {
         if (this.onPlayState) {
-            return this.game.states[PlayState.key]
+            return this.game.states[MoveState.key]
         }
 
         return this
@@ -26,12 +26,24 @@ class IdleState extends GameState {
         
     }
 
+    readonly onSolverPointerDown = () => {
+        if (!this.isActiveState) {
+            return
+        }
+
+        this.game.nextSolver()
+    }
+    
     readonly onTilePointerDown = (value: Tile, index: number) => {
         if (!this.isActiveState || !CONST.levelMask[index] || !CONST.levelMask[this.game.player.index]) {
             return
         }
 
-        const path = this.game.getPath(this.game.player.index, index)
+        for (const tile of this.game.tiles) {
+            tile.alpha = CONST.inactiveTileAlpha
+        }
+
+        const path = this.game.currentSolver.solve(this.game.player.index, index)
         const toX = []
         const toY = []
 

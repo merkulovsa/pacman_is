@@ -1,5 +1,5 @@
-class PlayState extends GameState {
-    static readonly key: string = "PlayState"
+class MoveState extends GameState {
+    static readonly key: string = "MoveState"
 
     constructor(game: GameController) {
         super(game)
@@ -18,6 +18,8 @@ class PlayState extends GameState {
     }
 
     exit(): void {
-        
+        for (const tile of this.game.tiles) {
+            tile.alpha = 1.0
+        }
     }
 }
