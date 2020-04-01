@@ -45,9 +45,9 @@ namespace CONST {
 
     export const stepDuration: number = 200 // milliseconds 
 
-    export const tileTex0: PIXI.Texture = PIXI.Texture.from("../assets/textures/1.png")
+    export const tileTex0: PIXI.Texture = PIXI.Texture.from("../assets/1.png")
 
-    export const tileTex1: PIXI.Texture = PIXI.Texture.from("../assets/textures/0.png")
+    export const tileTex1: PIXI.Texture = PIXI.Texture.from("../assets/0.png")
 
-    export const playerTex: PIXI.Texture = PIXI.Texture.from("../assets/textures/player.png")
+    export const playerTex: PIXI.Texture = PIXI.Texture.from("../assets/player.png")
 }

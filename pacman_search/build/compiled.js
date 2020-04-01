@@ -20607,9 +20607,9 @@ var CONST;
     CONST.addedToPathTileAlpha = 1.0;
     CONST.inactiveTileAlpha = 0.8;
     CONST.stepDuration = 200;
-    CONST.tileTex0 = PIXI.Texture.from("../assets/textures/1.png");
-    CONST.tileTex1 = PIXI.Texture.from("../assets/textures/0.png");
-    CONST.playerTex = PIXI.Texture.from("../assets/textures/player.png");
+    CONST.tileTex0 = PIXI.Texture.from("../assets/1.png");
+    CONST.tileTex1 = PIXI.Texture.from("../assets/0.png");
+    CONST.playerTex = PIXI.Texture.from("../assets/player.png");
 })(CONST || (CONST = {}));
 class SceneDesigner {
     static get instance() {
